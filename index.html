@@ -1,0 +1,822 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" type="image/png" href="favicon.png">
+<title>Kalimat Strike</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700&family=Reem+Kufi:wght@600;700&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: full-bleed canvas battlefield, slim HUD strip on top, one centered card for menu / pause / game over.
+   Single dark look by choice (it is a night-sky arcade game), so no light theme. */
+:root{
+  --space:#070b16;
+  --hull:#cfd8ec;
+  --laser:#3be8d0;
+  --rocket:#ffb347;
+  --alarm:#ff5d6c;
+  --dim:#7384b3;
+  --panel:rgba(10,16,34,.84);
+  --line:rgba(120,150,220,.28);
+  --font-ar:"Cairo","Segoe UI",Tahoma,"Noto Naskh Arabic",sans-serif;
+  --font-kufi:"Reem Kufi","Cairo","Segoe UI",Tahoma,sans-serif;
+  --font-ui:"Space Grotesk","Segoe UI",system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--space);color:var(--hull);font:14px/1.5 var(--font-ui);overflow:hidden;
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+#stage{position:relative;width:100%;height:100%;overflow:hidden;background:var(--space)}
+#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+
+.gutter{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+#hud{position:absolute;top:0;left:0;right:0;padding-block:10px;pointer-events:none}
+.hud-in{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:8px 20px}
+.stats{display:flex;flex-wrap:wrap;gap:6px 22px}
+.stat{display:flex;flex-direction:column;line-height:1.05;min-width:0}
+.stat small{font:500 10px var(--font-ui);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.stat b{font:700 22px var(--font-ui);font-variant-numeric:tabular-nums;color:var(--hull)}
+.stat b.amber{color:var(--rocket)}
+.right{display:flex;align-items:flex-end;gap:12px}
+.shield{display:flex;flex-direction:column;gap:5px;width:132px}
+.shield small{font:500 10px var(--font-ui);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.bar{display:block;height:8px;border-radius:4px;background:rgba(120,150,220,.2);overflow:hidden}
+.bar i{display:block;height:100%;width:100%;background:var(--laser);transition:width .25s,background .25s}
+.bar.low i{background:var(--alarm)}
+.ctl{pointer-events:auto;font:600 11px var(--font-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--hull);
+  background:rgba(10,16,34,.6);border:1px solid var(--line);border-radius:6px;padding:7px 10px;cursor:pointer}
+.ctl:hover{border-color:var(--laser)}
+.ctl:focus-visible,.go:focus-visible{outline:2px solid var(--rocket);outline-offset:2px}
+
+#overlay{position:absolute;inset:0;display:grid;place-items:center;padding-block:24px;
+  background:radial-gradient(ellipse at center,rgba(7,11,22,.5),rgba(7,11,22,.9))}
+#overlay[hidden]{display:none}
+.card{width:min(540px,100%);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:26px 24px;text-align:center;
+  max-height:100%;overflow:auto}
+.card h1{margin:0;font:700 clamp(40px,10vw,68px)/1.2 var(--font-kufi);color:#f1f5ff}
+.eyebrow{margin:2px 0 14px;font:500 12px var(--font-ui);letter-spacing:.3em;text-transform:uppercase;color:var(--laser)}
+.ar{margin:0 0 10px;font:600 17px/1.8 var(--font-ar);direction:rtl;color:var(--hull)}
+.en{margin:0 0 16px;font:400 14px/1.55 var(--font-ui);color:var(--dim);text-wrap:pretty}
+.keys{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:0 0 18px}
+.keys span{font:500 12px var(--font-ui);color:var(--dim);display:inline-flex;align-items:center;gap:7px}
+kbd{font:600 11px var(--font-ui);color:var(--hull);background:rgba(120,150,220,.14);border:1px solid var(--line);border-radius:5px;padding:2px 7px}
+.result{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0 0 18px}
+.result[hidden]{display:none}
+.result div{background:rgba(120,150,220,.1);border:1px solid var(--line);border-radius:8px;padding:9px 6px}
+.result b{display:block;font:700 22px var(--font-ui);font-variant-numeric:tabular-nums;color:var(--hull)}
+.result small{font:500 10px var(--font-ui);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.go{font:700 16px var(--font-ar);color:#1b1100;background:var(--rocket);border:0;border-radius:8px;padding:12px 26px;cursor:pointer;min-width:190px}
+.go:hover{filter:brightness(1.08)}
+.best{margin:14px 0 0;font:500 12px var(--font-ui);letter-spacing:.08em;color:var(--dim)}
+.note{margin:12px 0 0;font:400 12px/1.5 var(--font-ui);color:var(--dim);text-wrap:pretty}
+
+.modes{display:flex;flex-direction:column;gap:12px;margin:0 0 18px;text-align:start}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border:1px solid var(--line);border-radius:10px;background:rgba(120,150,220,.08)}
+.segbtn{font:600 14px var(--font-ar);color:var(--dim);background:transparent;border:0;border-radius:7px;padding:9px 8px;cursor:pointer}
+.segbtn:hover{color:var(--hull)}
+.segbtn[aria-checked="true"]{background:rgba(59,232,208,.16);color:var(--hull);box-shadow:inset 0 0 0 1px var(--laser)}
+.segbtn:focus-visible,.cfg input:focus-visible{outline:2px solid var(--rocket);outline-offset:2px}
+.cfg{display:grid;gap:6px}
+.cfg .row{display:flex;justify-content:space-between;gap:12px;font:600 13px var(--font-ar);color:var(--hull)}
+.cfg output{font:700 14px var(--font-ui);font-variant-numeric:tabular-nums;color:var(--rocket)}
+.cfg input[type=range]{width:100%;accent-color:var(--laser);margin:0 0 6px}
+.chalInfo{margin:0;font:400 13px/1.55 var(--font-ui);color:var(--dim);text-align:center;text-wrap:pretty}
+
+#kb{position:absolute;left:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;font-size:16px;border:0;padding:0}
+
+@media (max-width:520px){
+  .stat b{font-size:18px}
+  .shield{width:96px}
+  .card{padding:22px 16px}
+}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="c" aria-label="Kalimat Strike game field"></canvas>
+
+  <header id="hud">
+    <div class="hud-in gutter">
+      <div class="stats">
+        <div class="stat"><small>النقاط · Score</small><b id="score">0</b></div>
+        <div class="stat"><small>المرحلة · Level</small><b id="level">1</b></div>
+        <div class="stat"><small>الدقة · Accuracy</small><b id="acc">100%</b></div>
+        <div class="stat"><small>التتابع · Streak</small><b id="combo" class="amber">0</b></div>
+        <div class="stat"><small>السرعة · Speed</small><b id="speedVal">55</b></div>
+      </div>
+      <div class="right">
+        <div class="shield"><small>الدرع · Shield</small><span class="bar"><i id="shieldBar"></i></span></div>
+        <button class="ctl" id="muteBtn" type="button">Sound on</button>
+        <button class="ctl" id="pauseBtn" type="button">Pause</button>
+      </div>
+    </div>
+  </header>
+
+  <section id="overlay" class="gutter">
+    <div class="card">
+      <h1 id="ovTitle" lang="ar" dir="rtl">غزو الكلمات</h1>
+      <p class="eyebrow" id="ovSub">Kalimat Strike</p>
+      <p class="ar" id="ovAr" lang="ar">سفن العدو تحمل كلمات عربية. اكتب الكلمة لتثبيت الهدف وإطلاق الليزر، والحرف الأخير يطلق صاروخًا.</p>
+      <p class="en" id="ovEn">Enemy ships carry Arabic words. Type a word to lock on and fire. Every letter is a laser shot, and the last letter launches a rocket.</p>
+      <div class="result" id="result" hidden>
+        <div><b id="rScore">0</b><small>Score</small></div>
+        <div><b id="rWords">0</b><small>Ships destroyed</small></div>
+        <div><b id="rAcc">0%</b><small>Accuracy</small></div>
+        <div><b id="rCombo">0</b><small>Best streak</small></div>
+      </div>
+      <div class="modes" id="modes">
+        <div class="seg" role="radiogroup" aria-label="Game mode">
+          <button type="button" class="segbtn" id="modeTrain" role="radio" aria-checked="true">تدريب · Training</button>
+          <button type="button" class="segbtn" id="modeChal" role="radio" aria-checked="false">تحدي · Challenge</button>
+        </div>
+        <div class="cfg" id="trainCfg">
+          <label class="row" for="cfgEnemies"><span>أقصى عدد للأعداء · Max enemies</span><output id="outEnemies">4</output></label>
+          <input type="range" id="cfgEnemies" min="1" max="10" step="1" value="4">
+          <label class="row" for="cfgSpeed"><span>السرعة · Speed</span><output id="outSpeed">55</output></label>
+          <input type="range" id="cfgSpeed" min="20" max="200" step="5" value="55">
+        </div>
+        <p class="chalInfo" id="chalCfg" hidden>Ships start slow and get faster every second. The run ends when your shield is gone.</p>
+      </div>
+      <div class="keys">
+        <span><kbd>Enter</kbd> Start</span>
+        <span><kbd>Esc</kbd> Pause</span>
+        <span><kbd>Space</kbd> Between words</span>
+      </div>
+      <button class="go" id="startBtn" type="button">ابدأ اللعب · Start</button>
+      <p class="best" id="best">Best score 0</p>
+      <p class="note" id="ovNote">Thanx to (ناصر صلاح الدين) & 🤖</p>
+      <p class="note" id="ovNote">Use an Arabic keyboard layout. On an English layout your keys follow the standard Arabic layout (Q = ض, W = ص, E = ث). On a phone, switch to the Arabic keyboard and tap the field.</p>
+    </div>
+  </section>
+
+  <input id="kb" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Keyboard input">
+</div>
+<script>
+(() => {
+'use strict';
+/* ---------- Word bank (plain letters only, no diacritics) ---------- */
+const WORDS = {
+  s: ('بيت شمس قمر نجم ماء نار ريح بحر نهر جبل سهل ورد زهر تمر خبز لبن عين قلب وجه سيف درب باب كتب علم سلم نور ليل يوم شهر عام طير سمك فيل أسد ذئب نمر قط كلب ثلج غيم رمل صخر برق رعد حلم أمل سر عمل لعب كرة ملح عسل زيت شاي قهوة جسر برج سور حقل غصن ورق نبع كهف ظل فجر').split(' '),
+  m: ('مدرسة مكتبة سفينة طائرة صحراء حديقة مفتاح سيارة شجرة نافذة طاولة كرسي مطار مدينة قرية شارع ميناء مصباح ساعة كتاب قلم دفتر معلم طالب صديق عائلة مطبخ غرفة سماء غيمة مطر عاصفة صباح مساء شتاء ربيع صيف خريف فرحة سعادة حكاية قصيدة موسيقى لوحة رسام كاتب مهندس طبيب ممرض تاجر فلاح صياد بحار طيار رائد نجمة كوكب مجرة فضاء مدار شهاب مذنب أرض ضوء ظلام سحاب شاطئ جزيرة غابة واحة وادي هضبة تلة سنبلة ياسمين بستان مزرعة طاحونة قلعة منارة قافلة خيمة بحيرة شلال سراب').split(' '),
+  l: ('مغامرة حضارة مستقبل تكنولوجيا استكشاف أسطول صاروخ مركبة انتصار شجاعة اكتشاف مسافرون استقلال محيطات بركان عبقرية معرفة صداقة حرية عدالة سلام ازدهار تحدي بطولة مهمة مستكشف رحلة مراقبة محطة فضائية كوكبة مذنبات غواصة مكتبات جامعة مختبر اختراع حاسوب برنامج شبكة معلومات ذاكرة تجربة نظرية فلسفة تاريخ جغرافيا رياضيات هندسة حكمة طموح إبداع خيال أسطورة ملحمة شاعر موسيقار مسرحية').split(' ')
+};
+
+/* ---------- Setup ---------- */
+const $ = id => document.getElementById(id);
+const cv = $('c'), ctx = cv.getContext('2d');
+const TAU = Math.PI * 2;
+const rand = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const COL = { laser: '#3be8d0', rocket: '#ffb347', alarm: '#ff5d6c', ink: '#e9f0ff' };
+const ENEMY_COL = ['#ff5d6c', '#b58cff', '#ffb347', '#6ea8ff'];
+let W = 0, H = 0, DPR = 1, FS = 24, bgCanvas = null;
+
+/* ---------- Arabic keyboard handling ---------- */
+// Standard Arabic 101 layout by physical key, used when the player's layout is Latin.
+const CODE_TO_AR = {
+  KeyQ:'ض', KeyW:'ص', KeyE:'ث', KeyR:'ق', KeyT:'ف', KeyY:'غ', KeyU:'ع', KeyI:'ه', KeyO:'خ', KeyP:'ح',
+  BracketLeft:'ج', BracketRight:'د', KeyA:'ش', KeyS:'س', KeyD:'ي', KeyF:'ب', KeyG:'ل', KeyH:'ا', KeyJ:'ت',
+  KeyK:'ن', KeyL:'م', Semicolon:'ك', Quote:'ط', KeyZ:'ئ', KeyX:'ء', KeyC:'ؤ', KeyV:'ر', KeyB:'لا', KeyN:'ى',
+  KeyM:'ة', Comma:'و', Period:'ز', Slash:'ظ', Backquote:'ذ'
+};
+const AR_RE = /[ء-يٱ]/;
+// Alef forms, alef maksura and teh marbuta are accepted interchangeably with their common keyboard neighbours.
+function norm(ch) {
+  switch (ch) {
+    case 'أ': case 'إ': case 'آ': case 'ٱ': return 'ا';
+    case 'ى': return 'ي';
+    case 'ة': return 'ه';
+  }
+  return ch;
+}
+function lettersFromEvent(e) {
+  const k = e.key || '';
+  if (k === ' ') return [' '];
+  if (k.length && k.length <= 3 && AR_RE.test(k)) return [...k].filter(c => AR_RE.test(c));
+  if (/^[\x20-\x7e]$/.test(k)) { const m = CODE_TO_AR[e.code]; return m ? [...m] : []; }
+  return [];
+}
+// Letters that never join the following letter (needed to measure shaped prefixes).
+const NO_JOIN = new Set('ادذرزوأإآؤةء '.split(''));
+
+/* ---------- Audio (all synthesized) ---------- */
+let AC = null, master = null, noiseBuf = null, muted = false;
+try { muted = localStorage.getItem('ks-muted') === '1'; } catch (_) {}
+function initAudio() {
+  if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+  try {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    master = AC.createGain(); master.gain.value = 0.5; master.connect(AC.destination);
+    const n = AC.sampleRate;
+    noiseBuf = AC.createBuffer(1, n, AC.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+  } catch (_) { AC = null; }
+}
+function tone(type, f0, f1, dur, vol) {
+  if (!AC || muted) return;
+  const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(f0, t);
+  o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.02);
+}
+function noise(dur, vol, f0, f1) {
+  if (!AC || muted) return;
+  const t = AC.currentTime, s = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain();
+  s.buffer = noiseBuf;
+  f.type = 'lowpass';
+  f.frequency.setValueAtTime(f0, t);
+  f.frequency.exponentialRampToValueAtTime(Math.max(40, f1), t + dur);
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  s.connect(f); f.connect(g); g.connect(master);
+  s.start(t, Math.random() * 0.4, dur);
+}
+const sfx = {
+  laser() { tone('square', 1100, 260, 0.11, 0.06); },
+  lock() { tone('sine', 880, 1760, 0.09, 0.09); },
+  rocket() { noise(0.45, 0.12, 2400, 300); tone('sawtooth', 180, 70, 0.4, 0.05); },
+  boom() { noise(0.6, 0.28, 1800, 80); tone('sine', 90, 30, 0.5, 0.2); },
+  miss() { tone('sawtooth', 140, 90, 0.12, 0.07); },
+  hurt() { noise(0.5, 0.28, 900, 60); tone('square', 120, 40, 0.4, 0.1); },
+  level() { tone('triangle', 440, 880, 0.25, 0.1); setTimeout(() => tone('triangle', 660, 1320, 0.25, 0.1), 120); }
+};
+
+/* ---------- Game state ---------- */
+const G = {
+  state: 'menu', score: 0, level: 1, kills: 0, correct: 0, wrong: 0, combo: 0, maxCombo: 0,
+  shield: 100, spawnT: 0, target: null, banner: null, shake: 0, hurt: 0, missFlash: 0, time: 0, pt: 0, shownSp: 0
+};
+const CFG = { mode: 'train', enemies: 4, speed: 55 };
+try {
+  const s = JSON.parse(localStorage.getItem('ks-cfg') || 'null');
+  if (s) {
+    if (s.mode === 'chal') CFG.mode = 'chal';
+    CFG.enemies = clamp(Math.round(+s.enemies) || 4, 1, 10);
+    CFG.speed = clamp(Math.round(+s.speed) || 55, 20, 200);
+  }
+} catch (_) {}
+// Challenge mode: speed starts at `start` px/s and rises by `rate` every second of play, up to `max`.
+const CHAL = { start: 40, rate: 0.8, max: 320, enemies: 5 };
+function loadBest() { try { return +localStorage.getItem('ks-best-' + CFG.mode) || 0; } catch (_) { return 0; } }
+let best = loadBest();
+const player = { x: 0, y: 0, ang: 0, flame: 0 };
+let enemies = [], bullets = [], parts = [], rings = [], floaters = [], stars = [];
+
+/* ---------- Words ---------- */
+function pickWord() {
+  const L = G.level, r = Math.random();
+  let band;
+  if (L <= 1) band = r < 0.8 ? 's' : 'm';
+  else if (L <= 3) band = r < 0.5 ? 's' : 'm';
+  else if (L <= 6) band = r < 0.2 ? 's' : r < 0.8 ? 'm' : 'l';
+  else band = r < 0.1 ? 's' : r < 0.6 ? 'm' : 'l';
+  const alive = enemies.filter(e => !e.dying);
+  const taken = new Set(alive.map(e => norm(e.word[0])));
+  const words = new Set(alive.map(e => e.word));
+  // From level 7 on, glue extra words onto the base word: about +1 word every 3 levels, so length never stops growing.
+  const chainF = Math.max(0, (L - 6) / 3); // 0.33 at level 7, 1.0 at level 9, and so on
+  const maxChars = Math.min(40, Math.floor((W - 60) / (FS * 0.6))); // keep it on screen
+  const rnd = b => WORDS[b][(Math.random() * WORDS[b].length) | 0];
+  const build = () => {
+    let w = rnd(band);
+    const chain = Math.floor(chainF) + (Math.random() < chainF % 1 ? 1 : 0);
+    for (let k = 0; k < chain; k++) { const nx = rnd(k % 2 ? 'l' : 'm'); if ((w + ' ' + nx).length <= maxChars) w += ' ' + nx; }
+    return w;
+  };
+  for (let i = 0; i < 40; i++) {
+    const w = build();
+    if (!taken.has(norm(w[0])) && !words.has(w)) return w;
+  }
+  return build();
+}
+
+/* ---------- HUD / overlay ---------- */
+const el = {
+  score: $('score'), level: $('level'), acc: $('acc'), combo: $('combo'), bar: $('shieldBar'),
+  overlay: $('overlay'), title: $('ovTitle'), sub: $('ovSub'), ar: $('ovAr'), en: $('ovEn'),
+  result: $('result'), start: $('startBtn'), best: $('best'), note: $('ovNote'),
+  mute: $('muteBtn'), pause: $('pauseBtn'), kb: $('kb'),
+  speed: $('speedVal'), modes: $('modes'), modeT: $('modeTrain'), modeC: $('modeChal'),
+  trainCfg: $('trainCfg'), chalCfg: $('chalCfg'), cEn: $('cfgEnemies'), cSp: $('cfgSpeed'), oEn: $('outEnemies'), oSp: $('outSpeed')
+};
+function accuracy() { const t = G.correct + G.wrong; return t ? Math.round(G.correct / t * 100) : 100; }
+function hud() {
+  el.score.textContent = G.score;
+  el.level.textContent = G.level;
+  el.acc.textContent = accuracy() + '%';
+  el.combo.textContent = G.combo;
+  el.speed.textContent = Math.round(gameSpeed());
+  el.bar.style.width = Math.max(0, G.shield) + '%';
+  el.bar.parentElement.classList.toggle('low', G.shield <= 40);
+  el.best.textContent = 'Best score ' + best;
+}
+function showOverlay(mode) {
+  el.overlay.hidden = false;
+  el.result.hidden = mode !== 'over';
+  el.note.hidden = mode === 'over';
+  el.modes.hidden = mode === 'pause';
+  if (mode === 'menu') {
+    el.title.textContent = 'غزو الكلمات'; el.sub.textContent = 'Kalimat Strike';
+    el.ar.hidden = false; el.en.hidden = false; el.start.textContent = 'ابدأ اللعب · Start';
+  } else if (mode === 'pause') {
+    el.title.textContent = 'متوقف'; el.sub.textContent = 'Paused';
+    el.ar.hidden = true; el.en.hidden = true; el.start.textContent = 'استمر · Resume';
+  } else {
+    el.title.textContent = 'انتهت المعركة'; el.sub.textContent = 'Game over';
+    el.ar.hidden = true; el.en.hidden = true; el.start.textContent = 'العب مجددًا · Play again';
+    $('rScore').textContent = G.score; $('rWords').textContent = G.kills;
+    $('rAcc').textContent = accuracy() + '%'; $('rCombo').textContent = G.maxCombo;
+  }
+  el.start.focus({ preventScroll: true });
+}
+function hideOverlay() { el.overlay.hidden = true; }
+function syncMute() { el.mute.textContent = muted ? 'Sound off' : 'Sound on'; }
+
+/* ---------- Canvas, background, stars ---------- */
+function wordFont(size) { return '700 ' + (size || FS) + 'px Cairo, "Segoe UI", Tahoma, "Noto Naskh Arabic", sans-serif'; }
+function buildBg() {
+  bgCanvas = document.createElement('canvas');
+  bgCanvas.width = Math.max(1, Math.floor(W)); bgCanvas.height = Math.max(1, Math.floor(H));
+  const b = bgCanvas.getContext('2d');
+  const g = b.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#060a15'); g.addColorStop(1, '#0d1431');
+  b.fillStyle = g; b.fillRect(0, 0, W, H);
+  const neb = (x, y, r, c) => {
+    const rg = b.createRadialGradient(x, y, 0, x, y, r);
+    rg.addColorStop(0, c); rg.addColorStop(1, 'rgba(0,0,0,0)');
+    b.fillStyle = rg; b.fillRect(0, 0, W, H);
+  };
+  neb(W * 0.2, H * 0.3, Math.max(W, H) * 0.55, 'rgba(60,70,170,.22)');
+  neb(W * 0.85, H * 0.7, Math.max(W, H) * 0.5, 'rgba(30,150,160,.14)');
+  neb(W * 0.6, H * 0.05, Math.max(W, H) * 0.4, 'rgba(150,70,160,.12)');
+}
+function initStars() {
+  const n = Math.round(clamp(W * H / 6500, 60, 220));
+  stars = Array.from({ length: n }, () => ({ x: rand(0, W), y: rand(0, H), z: Math.random() }));
+}
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = cv.clientWidth; H = cv.clientHeight;
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  FS = clamp(W / 34, 20, 30);
+  player.x = W / 2; player.y = H - clamp(H * 0.1, 56, 92);
+  buildBg(); initStars();
+}
+
+/* ---------- Effects ---------- */
+function spark(x, y, col, n, spd) {
+  for (let i = 0; i < n; i++) {
+    const a = rand(0, TAU), v = rand(40, spd || 200);
+    parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: rand(0.18, 0.4), t: 0, size: rand(1, 2.4), col, drag: 3 });
+  }
+}
+function explode(x, y, r, col) {
+  sfx.boom();
+  G.shake = Math.min(14, G.shake + r * 0.3);
+  rings.push({ x, y, r0: r * 0.4, r1: r * 2.6, life: 0.45, t: 0, col });
+  for (let i = 0; i < 34; i++) {
+    const a = rand(0, TAU), v = rand(60, 380);
+    parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: rand(0.4, 0.95), t: 0,
+      size: rand(1.5, 4), col: i % 3 ? col : '#ffd27a', drag: 2.2 });
+  }
+}
+function popup(x, y, text, col) { floaters.push({ x, y, text, col, t: 0, life: 0.9 }); }
+
+/* ---------- Enemies ---------- */
+/* Speed and enemy count depend on the mode. Training: fixed values from the sliders. Challenge: speed keeps rising. Word length grows with level in both. */
+function gameSpeed() { return CFG.mode === 'chal' ? Math.min(CHAL.max, CHAL.start + CHAL.rate * G.pt) : CFG.speed; }
+function speedBase() { return (G.state === 'play' ? gameSpeed() : 50) * clamp(H / 720, 0.75, 1.25); }
+function maxEnemies() { return CFG.mode === 'chal' ? CHAL.enemies : CFG.enemies; }
+// Spawn gap follows the time a ship needs to cross the screen, so the field stays filled at any speed or enemy limit.
+function spawnInterval() { return clamp(player.y / Math.max(10, speedBase()) / maxEnemies() * 0.75, 0.5, 3); }
+function spawnEnemy(demo) {
+  const word = pickWord();
+  ctx.font = wordFont(); ctx.direction = 'rtl';
+  const w = ctx.measureText(word).width;
+  const half = Math.max(w / 2 + 14, 34);
+  enemies.push({
+    word, typed: 0, x: rand(half, Math.max(half + 1, W - half)), y: -44, w,
+    type: (Math.random() * 4) | 0, s: FS * 0.95, k: rand(0.85, 1.15) * (demo ? 0.8 : 1),
+    ph: rand(0, TAU), wob: rand(8, 26), flash: 0, dying: false, demo: !!demo, age: 0
+  });
+}
+function removeEnemy(e) {
+  const i = enemies.indexOf(e); if (i >= 0) enemies.splice(i, 1);
+  if (G.target === e) G.target = null;
+}
+function killEnemy(e) {
+  const mult = Math.min(5, 1 + ((G.combo / 10) | 0));
+  const bonus = e.word.length * 15 * mult;
+  removeEnemy(e);
+  explode(e.x, e.y, e.s * 1.4, ENEMY_COL[e.type]);
+  if (!e.demo) {
+    G.score += bonus; G.kills++;
+    popup(e.x, e.y - e.s, '+' + bonus, COL.rocket);
+    const lv = 1 + ((G.kills / 8) | 0);
+    if (lv > G.level) {
+      G.level = lv; sfx.level();
+      G.banner = { text: 'المرحلة ' + lv, sub: 'LEVEL ' + lv, t: 2 };
+    }
+    hud();
+  }
+}
+function crash(e) {
+  removeEnemy(e);
+  explode(e.x, e.y, e.s * 1.4, ENEMY_COL[e.type]);
+  if (e.dying || e.demo) return;
+  G.shield -= 20; G.hurt = 1; G.combo = 0; G.shake = Math.min(16, G.shake + 8);
+  sfx.hurt(); hud();
+  if (G.shield <= 0) gameOver();
+}
+
+/* ---------- Shooting ---------- */
+function muzzle() { return { x: player.x + Math.sin(player.ang) * 28, y: player.y - Math.cos(player.ang) * 28 }; }
+function fire(e, rocket) {
+  const m = muzzle();
+  bullets.push({ x: m.x, y: m.y, tx: e.x, ty: e.y, e, rocket, sp: rocket ? 260 : 1700, age: 0, dir: -Math.PI / 2 });
+  if (rocket) sfx.rocket(); else sfx.laser();
+  spark(m.x, m.y, rocket ? COL.rocket : COL.laser, 4, 120);
+}
+function impact(b) {
+  if (b.rocket) {
+    if (b.e && enemies.includes(b.e)) killEnemy(b.e); else explode(b.tx, b.ty, 26, COL.rocket);
+  } else {
+    spark(b.tx, b.ty, COL.laser, 8, 220);
+    if (b.e) b.e.flash = 0.12;
+  }
+}
+function updateBullets(dt) {
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    if (b.e) { if (enemies.includes(b.e)) { b.tx = b.e.x; b.ty = b.e.y; } else b.e = null; }
+    if (b.rocket) b.sp = Math.min(950, b.sp + 1500 * dt);
+    const dx = b.tx - b.x, dy = b.ty - b.y, d = Math.hypot(dx, dy) || 1, step = b.sp * dt;
+    b.dir = Math.atan2(dy, dx); b.age += dt;
+    if (d <= step + (b.e ? b.e.s * 0.5 : 6) || b.age > 3) { impact(b); bullets.splice(i, 1); continue; }
+    b.x += dx / d * step; b.y += dy / d * step;
+    if (b.rocket) {
+      parts.push({ x: b.x - Math.cos(b.dir) * 8, y: b.y - Math.sin(b.dir) * 8, vx: rand(-20, 20), vy: rand(-20, 20),
+        life: rand(0.25, 0.5), t: 0, size: rand(2, 4), col: Math.random() < 0.5 ? '#ffb347' : '#ff7a3c', drag: 2 });
+    }
+  }
+}
+
+/* ---------- Typing ---------- */
+function miss() {
+  G.wrong++; G.combo = 0; G.missFlash = 0.18; sfx.miss(); hud();
+}
+function press(ch) {
+  if (G.state !== 'play') return;
+  if (ch === ' ' && !G.target) return;
+  const n = norm(ch);
+  if (!G.target) {
+    let pick = null;
+    for (const e of enemies) {
+      if (e.dying || e.demo || e.y < -10) continue;
+      if (norm(e.word[0]) === n && (!pick || e.y > pick.y)) pick = e;
+    }
+    if (!pick) return miss();
+    G.target = pick; sfx.lock();
+  }
+  const e = G.target;
+  if (norm(e.word[e.typed]) !== n) return miss();
+  e.typed++; G.correct++; G.combo++;
+  if (G.combo > G.maxCombo) G.maxCombo = G.combo;
+  const mult = Math.min(5, 1 + ((G.combo / 10) | 0));
+  G.score += 10 * mult;
+  const last = e.typed >= e.word.length;
+  fire(e, last);
+  if (last) { e.dying = true; G.target = null; }
+  hud();
+}
+
+/* ---------- Game flow ---------- */
+function resetGame() {
+  Object.assign(G, { score: 0, level: 1, kills: 0, correct: 0, wrong: 0, combo: 0, maxCombo: 0, shield: 100,
+    spawnT: 1.2, target: null, banner: { text: 'المرحلة 1', sub: 'LEVEL 1', t: 2 }, shake: 0, hurt: 0, missFlash: 0, pt: 0 });
+  enemies = []; bullets = []; parts = []; rings = []; floaters = [];
+}
+function startGame() {
+  initAudio();
+  resetGame();
+  G.state = 'play';
+  hideOverlay(); hud();
+  spawnEnemy(false);
+  if (window.matchMedia && matchMedia('(pointer:coarse)').matches) el.kb.focus({ preventScroll: true });
+}
+function pauseGame() { if (G.state === 'play') { G.state = 'pause'; showOverlay('pause'); } }
+function resumeGame() { if (G.state === 'pause') { G.state = 'play'; hideOverlay(); } }
+function gameOver() {
+  G.state = 'over'; G.target = null;
+  enemies.forEach(e => { e.demo = true; });
+  if (G.score > best) { best = G.score; try { localStorage.setItem('ks-best-' + CFG.mode, String(best)); } catch (_) {} }
+  hud(); showOverlay('over');
+}
+
+/* ---------- Update ---------- */
+function update(dt) {
+  for (const s of stars) { s.y += (10 + s.z * 55) * dt; if (s.y > H) { s.y = -2; s.x = rand(0, W); } }
+  if (G.state === 'pause') return;
+  G.time += dt;
+  const live = G.state === 'play';
+  if (live) {
+    G.pt += dt;
+    const sp = Math.round(gameSpeed());
+    if (sp !== G.shownSp) { G.shownSp = sp; el.speed.textContent = sp; }
+  }
+
+  // spawning
+  G.spawnT -= dt;
+  if (G.spawnT <= 0) {
+    if (live) {
+      if (enemies.filter(e => !e.dying).length < maxEnemies()) spawnEnemy(false);
+      G.spawnT = spawnInterval() * rand(0.8, 1.2);
+    } else {
+      if (enemies.length < 5) spawnEnemy(true);
+      G.spawnT = 1.4;
+    }
+  }
+
+  // enemies
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    e.age += dt; e.y += speedBase() * e.k * dt;
+    e.x += Math.sin(e.age * 1.3 + e.ph) * e.wob * dt + (player.x - e.x) * 0.03 * dt;
+    const half = Math.max(e.w / 2 + 14, 34);
+    e.x = clamp(e.x, half, Math.max(half, W - half));
+    if (e.flash > 0) e.flash -= dt;
+    if (e.typed > 0 && !e.dying && Math.random() < dt * 7) {
+      parts.push({ x: e.x + rand(-6, 6), y: e.y - e.s * 0.4, vx: rand(-15, 15), vy: rand(-50, -15),
+        life: rand(0.4, 0.8), t: 0, size: rand(2, 4), col: '#6b7aa6', drag: 1 });
+    }
+    if (live && e.y > player.y - 26 && !e.demo) { crash(e); continue; }
+    if (e.y > H + 70) removeEnemy(e);
+  }
+
+  // player aims at target
+  const t = G.target;
+  const want = t ? Math.atan2(t.x - player.x, -(t.y - player.y)) : 0;
+  player.ang += (want - player.ang) * Math.min(1, dt * 12);
+  player.flame += dt * 40;
+
+  updateBullets(dt);
+
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i]; p.t += dt;
+    if (p.t >= p.life) { parts.splice(i, 1); continue; }
+    const k = Math.exp(-p.drag * dt);
+    p.vx *= k; p.vy *= k; p.x += p.vx * dt; p.y += p.vy * dt;
+  }
+  for (let i = rings.length - 1; i >= 0; i--) { rings[i].t += dt; if (rings[i].t >= rings[i].life) rings.splice(i, 1); }
+  for (let i = floaters.length - 1; i >= 0; i--) { const f = floaters[i]; f.t += dt; f.y -= 34 * dt; if (f.t >= f.life) floaters.splice(i, 1); }
+  if (G.banner) { G.banner.t -= dt; if (G.banner.t <= 0) G.banner = null; }
+  G.shake = Math.max(0, G.shake - dt * 30);
+  G.hurt = Math.max(0, G.hurt - dt * 1.6);
+  G.missFlash = Math.max(0, G.missFlash - dt);
+}
+
+/* ---------- Drawing ---------- */
+function shipPath(t, s) {
+  ctx.beginPath();
+  if (t === 0) {
+    ctx.moveTo(0, s); ctx.lineTo(s * 0.85, -s * 0.7); ctx.lineTo(0, -s * 0.35); ctx.lineTo(-s * 0.85, -s * 0.7);
+  } else if (t === 1) {
+    ctx.ellipse(0, 0, s * 0.95, s * 0.5, 0, 0, TAU);
+  } else if (t === 2) {
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * TAU + Math.PI / 6, px = Math.cos(a) * s * 0.85, py = Math.sin(a) * s * 0.85;
+      if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+    }
+  } else {
+    ctx.moveTo(0, s * 0.9); ctx.lineTo(s * 0.35, s * 0.1); ctx.lineTo(s * 0.95, -s * 0.2); ctx.lineTo(s * 0.55, -s * 0.75);
+    ctx.lineTo(0, -s * 0.4); ctx.lineTo(-s * 0.55, -s * 0.75); ctx.lineTo(-s * 0.95, -s * 0.2); ctx.lineTo(-s * 0.35, s * 0.1);
+  }
+  ctx.closePath();
+}
+function drawEnemyShip(e) {
+  const c = ENEMY_COL[e.type], s = e.s;
+  ctx.save();
+  ctx.translate(e.x, e.y);
+  // engine flame (ships fly nose-down, engines on top)
+  const fl = s * (0.5 + 0.25 * Math.sin(e.age * 30 + e.ph));
+  ctx.fillStyle = c; ctx.globalAlpha = 0.55;
+  ctx.beginPath(); ctx.moveTo(-s * 0.16, -s * 0.5); ctx.lineTo(0, -s * 0.5 - fl); ctx.lineTo(s * 0.16, -s * 0.5); ctx.closePath(); ctx.fill();
+  ctx.globalAlpha = 1;
+  shipPath(e.type, s);
+  ctx.fillStyle = '#0f1830'; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = c; ctx.shadowColor = c; ctx.shadowBlur = 14; ctx.stroke(); ctx.shadowBlur = 0;
+  if (e.typed > 0) {
+    ctx.fillStyle = 'rgba(255,93,108,' + (0.12 + 0.35 * e.typed / e.word.length) + ')';
+    shipPath(e.type, s); ctx.fill();
+  }
+  ctx.fillStyle = c; ctx.globalAlpha = 0.85;
+  ctx.beginPath(); ctx.arc(0, 0, s * 0.17, 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
+  if (e.flash > 0) { ctx.fillStyle = 'rgba(255,255,255,' + Math.min(0.9, e.flash * 7) + ')'; shipPath(e.type, s); ctx.fill(); }
+  ctx.restore();
+}
+function drawPlayer() {
+  const p = player;
+  ctx.save();
+  ctx.translate(p.x, p.y); ctx.rotate(p.ang);
+  const fl = 10 + 5 * Math.sin(p.flame);
+  ctx.fillStyle = COL.rocket; ctx.globalAlpha = 0.8;
+  ctx.beginPath(); ctx.moveTo(-6, 14); ctx.lineTo(0, 14 + fl); ctx.lineTo(6, 14); ctx.closePath(); ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, -28); ctx.lineTo(9, -6); ctx.lineTo(24, 16); ctx.lineTo(10, 11); ctx.lineTo(0, 19);
+  ctx.lineTo(-10, 11); ctx.lineTo(-24, 16); ctx.lineTo(-9, -6); ctx.closePath();
+  ctx.fillStyle = '#16213f'; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = COL.laser; ctx.shadowColor = COL.laser; ctx.shadowBlur = 12; ctx.stroke(); ctx.shadowBlur = 0;
+  ctx.fillStyle = COL.laser; ctx.globalAlpha = 0.9;
+  ctx.beginPath(); ctx.ellipse(0, -4, 3.2, 7, 0, 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
+  ctx.restore();
+  if (G.hurt > 0) {
+    ctx.strokeStyle = 'rgba(255,93,108,' + G.hurt + ')'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 38, 0, TAU); ctx.stroke();
+  }
+}
+function prefixWidth(e) {
+  if (e.typed >= e.word.length) return e.w;
+  const s = e.word.slice(0, e.typed);
+  const joins = !NO_JOIN.has(s[s.length - 1]);
+  return ctx.measureText(joins ? s + '‍' : s).width;
+}
+function drawLabel(e) {
+  ctx.font = wordFont(); ctx.direction = 'rtl'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  e.w = ctx.measureText(e.word).width;
+  const cx = e.x, cy = e.y + e.s + FS * 0.95, locked = G.target === e;
+  const pw = e.w + 22, ph = FS * 1.55;
+  ctx.fillStyle = locked ? 'rgba(14,28,56,.92)' : 'rgba(7,11,22,.68)';
+  ctx.strokeStyle = locked ? (G.missFlash > 0 ? COL.alarm : COL.laser) : 'rgba(120,150,220,.28)';
+  ctx.lineWidth = locked ? 2 : 1;
+  ctx.beginPath(); ctx.roundRect(cx - pw / 2, cy - ph / 2, pw, ph, 8); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = COL.ink; ctx.fillText(e.word, cx, cy + 1);
+  if (e.typed > 0) {
+    const tw = prefixWidth(e);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(cx + e.w / 2 - tw - 1, cy - FS, tw + 2, FS * 2); ctx.clip();
+    ctx.fillStyle = COL.laser; ctx.fillText(e.word, cx, cy + 1);
+    ctx.restore();
+  }
+}
+function drawReticle(e) {
+  const r = e.s * 1.5, t = G.time * 2.2, c = G.missFlash > 0 ? COL.alarm : COL.laser;
+  const m = muzzle();
+  ctx.save();
+  ctx.strokeStyle = c; ctx.globalAlpha = 0.28; ctx.lineWidth = 1.5; ctx.setLineDash([4, 9]);
+  ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(e.x, e.y); ctx.stroke();
+  ctx.globalAlpha = 0.95; ctx.lineWidth = 2; ctx.setLineDash([]);
+  for (let i = 0; i < 4; i++) {
+    const a = t + i * Math.PI / 2;
+    ctx.beginPath(); ctx.arc(e.x, e.y, r, a, a + 0.9); ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawBullet(b) {
+  ctx.save();
+  ctx.translate(b.x, b.y); ctx.rotate(b.dir);
+  if (b.rocket) {
+    ctx.fillStyle = '#e9f0ff';
+    ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(1, -3.5); ctx.lineTo(-8, -3.5); ctx.lineTo(-8, 3.5); ctx.lineTo(1, 3.5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = COL.alarm; ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(3, -3.2); ctx.lineTo(3, 3.2); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = COL.rocket; ctx.fillRect(-12, -2, 5, 4);
+  } else {
+    const g = ctx.createLinearGradient(-34, 0, 6, 0);
+    g.addColorStop(0, 'rgba(59,232,208,0)'); g.addColorStop(1, 'rgba(180,255,245,1)');
+    ctx.strokeStyle = g; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    ctx.shadowColor = COL.laser; ctx.shadowBlur = 10;
+    ctx.beginPath(); ctx.moveTo(-34, 0); ctx.lineTo(6, 0); ctx.stroke();
+  }
+  ctx.restore();
+}
+function draw() {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  if (bgCanvas) ctx.drawImage(bgCanvas, 0, 0, W, H); else { ctx.fillStyle = '#070b16'; ctx.fillRect(0, 0, W, H); }
+  ctx.save();
+  if (G.shake > 0.2) ctx.translate(rand(-G.shake, G.shake) * 0.5, rand(-G.shake, G.shake) * 0.5);
+
+  for (const s of stars) {
+    ctx.fillStyle = 'rgba(200,215,255,' + (0.25 + s.z * 0.65) + ')';
+    const z = 0.8 + s.z * 1.4; ctx.fillRect(s.x, s.y, z, z);
+  }
+  for (const e of enemies) drawEnemyShip(e);
+  if (G.target && G.state === 'play') drawReticle(G.target);
+  for (const b of bullets) drawBullet(b);
+  drawPlayer();
+  for (const e of enemies) drawLabel(e);
+
+  ctx.globalCompositeOperation = 'lighter';
+  for (const p of parts) {
+    ctx.globalAlpha = Math.max(0, 1 - p.t / p.life);
+    ctx.fillStyle = p.col;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, TAU); ctx.fill();
+  }
+  for (const r of rings) {
+    const k = r.t / r.life;
+    ctx.globalAlpha = 1 - k; ctx.strokeStyle = r.col; ctx.lineWidth = 3 * (1 - k) + 1;
+    ctx.beginPath(); ctx.arc(r.x, r.y, r.r0 + (r.r1 - r.r0) * k, 0, TAU); ctx.stroke();
+  }
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+
+  ctx.font = '700 16px "Space Grotesk", system-ui, sans-serif'; ctx.direction = 'ltr';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const f of floaters) {
+    ctx.globalAlpha = 1 - f.t / f.life; ctx.fillStyle = f.col; ctx.fillText(f.text, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  if (G.banner && G.state === 'play') {
+    const k = G.banner.t / 2, a = k > 0.8 ? (1 - k) / 0.2 : Math.min(1, k / 0.4);
+    ctx.globalAlpha = Math.max(0, a); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.direction = 'rtl'; ctx.fillStyle = COL.ink; ctx.font = '700 ' + clamp(W / 9, 36, 72) + 'px "Reem Kufi", Cairo, sans-serif';
+    ctx.fillText(G.banner.text, W / 2, H * 0.36);
+    ctx.direction = 'ltr'; ctx.fillStyle = COL.laser; ctx.font = '500 13px "Space Grotesk", sans-serif';
+    ctx.fillText(G.banner.sub.split('').join(' '), W / 2, H * 0.36 + clamp(W / 9, 36, 72) * 0.75);
+    ctx.globalAlpha = 1;
+  }
+  if (G.hurt > 0) {
+    const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.75);
+    g.addColorStop(0, 'rgba(255,93,108,0)'); g.addColorStop(1, 'rgba(255,93,108,' + G.hurt * 0.45 + ')');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+}
+
+/* ---------- Input wiring ---------- */
+window.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    if (G.state === 'pause') { e.preventDefault(); resumeGame(); }
+    else if (G.state !== 'play') { e.preventDefault(); startGame(); }
+    return;
+  }
+  if (e.key === 'Escape') {
+    if (G.state === 'play') pauseGame(); else if (G.state === 'pause') resumeGame();
+    return;
+  }
+  if (G.state !== 'play' || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'Unidentified' || e.isComposing || e.keyCode === 229) return; // mobile keyboards: handled by the input event
+  const letters = lettersFromEvent(e);
+  if (letters.length) { e.preventDefault(); letters.forEach(press); }
+  else if (/^[\x20-\x7e]$/.test(e.key)) e.preventDefault(); // stop quick-find and similar shortcuts
+});
+el.kb.addEventListener('input', () => {
+  const v = el.kb.value; el.kb.value = '';
+  if (G.state !== 'play') return;
+  for (const c of v) if (c === ' ' || AR_RE.test(c)) press(c);
+});
+cv.addEventListener('pointerdown', e => { if (e.pointerType === 'touch' && G.state === 'play') el.kb.focus({ preventScroll: true }); });
+el.start.addEventListener('click', () => { if (G.state === 'pause') resumeGame(); else startGame(); el.start.blur(); });
+el.pause.addEventListener('click', () => { if (G.state === 'play') pauseGame(); else if (G.state === 'pause') resumeGame(); el.pause.blur(); });
+el.mute.addEventListener('click', () => {
+  muted = !muted; try { localStorage.setItem('ks-muted', muted ? '1' : '0'); } catch (_) {}
+  syncMute(); el.mute.blur();
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
+window.addEventListener('resize', resize);
+
+/* ---------- Mode and settings panel ---------- */
+function saveCfg() { try { localStorage.setItem('ks-cfg', JSON.stringify(CFG)); } catch (_) {} }
+function syncCfg() {
+  const t = CFG.mode === 'train';
+  el.modeT.setAttribute('aria-checked', String(t)); el.modeC.setAttribute('aria-checked', String(!t));
+  el.trainCfg.hidden = !t; el.chalCfg.hidden = t;
+  el.cEn.value = CFG.enemies; el.cSp.value = CFG.speed;
+  el.oEn.textContent = CFG.enemies; el.oSp.textContent = CFG.speed;
+  best = loadBest(); hud();
+}
+el.modeT.addEventListener('click', () => { CFG.mode = 'train'; saveCfg(); syncCfg(); });
+el.modeC.addEventListener('click', () => { CFG.mode = 'chal'; saveCfg(); syncCfg(); });
+el.cEn.addEventListener('input', () => { CFG.enemies = +el.cEn.value; saveCfg(); syncCfg(); });
+el.cSp.addEventListener('input', () => { CFG.speed = +el.cSp.value; saveCfg(); syncCfg(); });
+
+/* ---------- Boot ---------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  update(dt); draw();
+  requestAnimationFrame(frame);
+}
+if (document.fonts && document.fonts.load) {
+  document.fonts.load('700 24px Cairo', 'ابتث').catch(() => {});
+  document.fonts.load('700 24px "Reem Kufi"', 'ابتث').catch(() => {});
+}
+resize(); syncMute(); syncCfg(); showOverlay('menu');
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
